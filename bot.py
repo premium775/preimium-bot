@@ -28,10 +28,7 @@ class OrderSteps(StatesGroup):
 
 # --- TUGMALAR ---
 def product_keyboard():
-    # Tugma matnini ham aniqroq qildik
-    buttons = [
-        [InlineKeyboardButton(text="⚪️ OQ SOCHIQNI TANLASH", callback_data="product_white")]
-    ]
+    buttons = [[InlineKeyboardButton(text="⚪️ OQ SOCHIQNI TANLASH", callback_data="product_white")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def phone_keyboard():
@@ -46,18 +43,29 @@ def location_keyboard():
         resize_keyboard=True, one_time_keyboard=True
     )
 
+def reorder_keyboard():
+    # Yangi buyurtma uchun tugma
+    buttons = [[InlineKeyboardButton(text="🔄 Qayta buyurtma berish", callback_data="reorder")]]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 # --- HANDLERLAR ---
 
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
+@dp.callback_query(F.data == "reorder") # Qayta buyurtma tugmasi bosilganda ham ishlaydi
+async def cmd_start(event: types.Message | types.CallbackQuery, state: FSMContext):
     await state.clear()
-    # Yozuv aynan tugma ustida bo'lishi uchun matnni shunday tayyorladik:
     info_text = (
         "Assalomu alaykum! **PREMIUM TOWELS** botiga xush kelibsiz.\n\n"
         "⚪️ **50 x 90 razmerli oq sochiq**\n"
         "Tanlash uchun quyidagi tugmani bosing 👇"
     )
-    await message.answer(info_text, reply_markup=product_keyboard(), parse_mode="Markdown")
+    
+    if isinstance(event, types.Message):
+        await event.answer(info_text, reply_markup=product_keyboard(), parse_mode="Markdown")
+    else:
+        await event.message.answer(info_text, reply_markup=product_keyboard(), parse_mode="Markdown")
+        await event.answer()
+        
     await state.set_state(OrderSteps.confirming_product)
 
 @dp.callback_query(OrderSteps.confirming_product, F.data == "product_white")
@@ -113,14 +121,16 @@ async def location_step(message: types.Message, state: FSMContext):
         f"📞 **Tel:** {data['phone']}"
     )
     
-    # Adminga yuborish
     await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     await bot.send_location(ADMIN_ID, lat, lon)
     
-    await message.answer("✅ Rahmat! Buyurtmangiz qabul qilindi. Operator tez orada bog'lanadi.", reply_markup=types.ReplyKeyboardRemove())
+    # TASDIQLASH VA QAYTA BUYURTMA TUGMASI
+    await message.answer(
+        "✅ Rahmat! Buyurtmangiz qabul qilindi. Operator tez orada bog'lanadi.\n\nYana buyurtma bermoqchi bo'lsangiz, tugmani bosing:", 
+        reply_markup=reorder_keyboard()
+    )
     await state.clear()
 
-# --- RENDER PORT SOZLAMASI ---
 async def handle(request):
     return web.Response(text="Bot is running")
 
