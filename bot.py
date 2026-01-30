@@ -13,7 +13,7 @@ from aiohttp import web
 
 # --- SOZLAMALAR ---
 API_TOKEN = '8329938226:AAHLUFVE-w88RD06QcOV3PHJSlVTWCc6kdo'
-ADMIN_ID = 5588598964 # O'zingizni ID raqamingizni yozing!
+ADMIN_ID = 6611780155# O'zingizni ID raqamingizni yozing!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
