@@ -1,45 +1,118 @@
 import asyncio
 import logging
 import os
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
-from aiohttp import web # Port ochish uchun kerak
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    InlineKeyboardButton, InlineKeyboardMarkup, 
+    ReplyKeyboardMarkup, KeyboardButton
+)
+from aiohttp import web
 
+# --- SOZLAMALAR ---
 API_TOKEN = '8329938226:AAHLUFVE-w88RD06QcOV3PHJSlVTWCc6kdo'
+ADMIN_ID = 6611780155  # O'zingizni ID raqamingizni yozing!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
-    welcome_text = "Assalomu alaykum! Bot hozir stabil ishlayapti. ✅"
-    await message.answer(welcome_text)
+# --- FSM (Qadamlar) ---
+class OrderSteps(StatesGroup):
+    choosing_color = State()
+    waiting_for_name = State()
+    waiting_for_phone = State()
+    waiting_for_location = State()
 
-# Render uchun "yolg'onchi" server yaratamiz
+# --- TUGMALAR ---
+def color_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text="⚪️ OQ", callback_data="color_oq")],
+        [InlineKeyboardButton(text="⚫️ QORA", callback_data="color_qora")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def phone_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📞 Raqamni yuborish", request_contact=True)]],
+        resize_keyboard=True, one_time_keyboard=True
+    )
+
+def location_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📍 Lokatsiyani yuborish", request_location=True)]],
+        resize_keyboard=True, one_time_keyboard=True
+    )
+
+# --- HANDLERLAR ---
+
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "Assalomu alaykum! Rangni tanlang:",
+        reply_markup=color_keyboard()
+    )
+    await state.set_state(OrderSteps.choosing_color)
+
+@dp.callback_query(OrderSteps.choosing_color, F.data.startswith("color_"))
+async def color_chosen(callback: types.CallbackQuery, state: FSMContext):
+    color = "Oq" if callback.data == "color_oq" else "Qora"
+    await state.update_data(chosen_color=color)
+    
+    await callback.message.delete()
+    await callback.message.answer(f"Tanlandi: {color}\n\nIltimos, ism va familiyangizni yozing:")
+    await state.set_state(OrderSteps.waiting_for_name)
+
+@dp.message(OrderSteps.waiting_for_name)
+async def name_step(message: types.Message, state: FSMContext):
+    await state.update_data(full_name=message.text)
+    await message.answer("Rahmat! Endi telefon raqamingizni yuboring:", reply_markup=phone_keyboard())
+    await state.set_state(OrderSteps.waiting_for_phone)
+
+@dp.message(OrderSteps.waiting_for_phone, F.contact)
+async def phone_step(message: types.Message, state: FSMContext):
+    await state.update_data(phone=message.contact.phone_number)
+    await message.answer("Oxirgi qadam: Lokatsiyangizni yuboring:", reply_markup=location_keyboard())
+    await state.set_state(OrderSteps.waiting_for_location)
+
+@dp.message(OrderSteps.waiting_for_location, F.location)
+async def location_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lat = message.location.latitude
+    lon = message.location.longitude
+    
+    # Adminga xabar yuborish
+    admin_text = (
+        f"🚀 **YANGI BUYURTMA!**\n\n"
+        f"🎨 Rang: {data['chosen_color']}\n"
+        f"👤 Mijoz: {data['full_name']}\n"
+        f"📞 Tel: {data['phone']}\n"
+        f"🆔 ID: `{message.from_user.id}`"
+    )
+    
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    await bot.send_location(ADMIN_ID, lat, lon) # Lokatsiyani xarita bo'lib borishi
+    
+    await message.answer("✅ Rahmat! Buyurtmangiz qabul qilindi. Operator bog'lanadi.", reply_markup=types.ReplyKeyboardRemove())
+    await state.clear()
+
+# --- RENDER PORT SOZLAMASI ---
 async def handle(request):
     return web.Response(text="Bot is running")
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    
-    # 1. Botni ishga tushirish
     loop = asyncio.get_event_loop()
     loop.create_task(dp.start_polling(bot))
-
-    # 2. Render kutayotgan portni ochish
     app = web.Application()
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    
-    # Render beradigan portni olamiz yoki 10000-portni ishlatamiz
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
-    
-    print(f"Port {port} ochildi. Bot ishlamoqda...")
     await site.start()
-
-    # Botni to'xtab qolmasligi uchun cheksiz kutish
     await asyncio.Event().wait()
 
 if __name__ == '__main__':
