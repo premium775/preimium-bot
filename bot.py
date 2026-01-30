@@ -13,24 +13,24 @@ from aiohttp import web
 
 # --- SOZLAMALAR ---
 API_TOKEN = '8329938226:AAHLUFVE-w88RD06QcOV3PHJSlVTWCc6kdo'
-ADMIN_ID = 5588598964  # O'zingizning ID raqamingizni yozing!
+ADMIN_ID = 5588598964  # O'zingizni ID raqamingizni yozing!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # --- FSM (Qadamlar) ---
 class OrderSteps(StatesGroup):
-    choosing_color = State()
+    confirming_product = State()
     waiting_for_quantity = State()
     waiting_for_name = State()
     waiting_for_phone = State()
     waiting_for_location = State()
 
 # --- TUGMALAR ---
-def color_keyboard():
+def product_keyboard():
+    # Tugma matnini ham aniqroq qildik
     buttons = [
-        [InlineKeyboardButton(text="⚪️ OQ", callback_data="color_oq")],
-        [InlineKeyboardButton(text="⚫️ QORA", callback_data="color_qora")]
+        [InlineKeyboardButton(text="⚪️ OQ SOCHIQNI TANLASH", callback_data="product_white")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -51,19 +51,25 @@ def location_keyboard():
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        "Assalomu alaykum! **PREMIUM TOWELS** botiga xush kelibsiz.\n"
-        "Iltimos, sochiq rangini tanlang:",
-        reply_markup=color_keyboard()
+    # Yozuv aynan tugma ustida bo'lishi uchun matnni shunday tayyorladik:
+    info_text = (
+        "Assalomu alaykum! **PREMIUM TOWELS** botiga xush kelibsiz.\n\n"
+        "⚪️ **50 x 90 razmerli oq sochiq**\n"
+        "Tanlash uchun quyidagi tugmani bosing 👇"
     )
-    await state.set_state(OrderSteps.choosing_color)
+    await message.answer(info_text, reply_markup=product_keyboard(), parse_mode="Markdown")
+    await state.set_state(OrderSteps.confirming_product)
 
-@dp.callback_query(OrderSteps.choosing_color, F.data.startswith("color_"))
-async def color_chosen(callback: types.CallbackQuery, state: FSMContext):
-    color = "Oq" if callback.data == "color_oq" else "Qora"
-    await state.update_data(chosen_color=color)
+@dp.callback_query(OrderSteps.confirming_product, F.data == "product_white")
+async def product_confirmed(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(chosen_color="Oq (50x90 sm)")
     await callback.message.delete()
-    await callback.message.answer(f"Tanlandi: {color}\n\nNechta buyurtma bermoqchisiz? \n(Eng kam buyurtma: **25 ta**)", parse_mode="Markdown")
+    await callback.message.answer(
+        "Tanlandi: **50 x 90 razmerli oq sochiq**\n\n"
+        "Nechta buyurtma bermoqchisiz? \n"
+        "(Eng kam buyurtma: **25 ta**)", 
+        parse_mode="Markdown"
+    )
     await state.set_state(OrderSteps.waiting_for_quantity)
 
 @dp.message(OrderSteps.waiting_for_quantity)
@@ -99,20 +105,18 @@ async def location_step(message: types.Message, state: FSMContext):
     lat = message.location.latitude
     lon = message.location.longitude
     
-    # Adminga yuboriladigan tozalangan xabar
     admin_text = (
         f"🚀 **YANGI BUYURTMA!**\n\n"
-        f"🎨 **Rangi:** {data['chosen_color']}\n"
+        f"📏 **Mahsulot:** {data['chosen_color']}\n"
         f"🔢 **Soni:** {data['amount']} ta\n"
         f"👤 **Mijoz:** {data['full_name']}\n"
         f"📞 **Tel:** {data['phone']}"
     )
     
-    # Adminga xabar va lokatsiya yuborish
+    # Adminga yuborish
     await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     await bot.send_location(ADMIN_ID, lat, lon)
     
-    # Mijozga tasdiqlash
     await message.answer("✅ Rahmat! Buyurtmangiz qabul qilindi. Operator tez orada bog'lanadi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
 
