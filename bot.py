@@ -13,7 +13,7 @@ from aiohttp import web
 
 # --- SOZLAMALAR ---
 API_TOKEN = '8329938226:AAHLUFVE-w88RD06QcOV3PHJSlVTWCc6kdo'
-ADMIN_ID = 6611780155  # O'zingizni ID raqamingizni yozing!
+ADMIN_ID = 6736281786  # O'zingizning ID raqamingizni yozing!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -21,7 +21,7 @@ dp = Dispatcher()
 # --- FSM (Qadamlar) ---
 class OrderSteps(StatesGroup):
     choosing_color = State()
-    waiting_for_quantity = State() # Soni uchun yangi qadam
+    waiting_for_quantity = State()
     waiting_for_name = State()
     waiting_for_phone = State()
     waiting_for_location = State()
@@ -99,19 +99,21 @@ async def location_step(message: types.Message, state: FSMContext):
     lat = message.location.latitude
     lon = message.location.longitude
     
+    # Adminga yuboriladigan tozalangan xabar
     admin_text = (
         f"🚀 **YANGI BUYURTMA!**\n\n"
-        f"🎨 Rang: {data['chosen_color']}\n"
-        f"🔢 Soni: {data['amount']} ta\n"
-        f"👤 Mijoz: {data['full_name']}\n"
-        f"📞 Tel: {data['phone']}\n"
-        f"🆔 ID: `{message.from_user.id}`"
+        f"🎨 **Rangi:** {data['chosen_color']}\n"
+        f"🔢 **Soni:** {data['amount']} ta\n"
+        f"👤 **Mijoz:** {data['full_name']}\n"
+        f"📞 **Tel:** {data['phone']}"
     )
     
+    # Adminga xabar va lokatsiya yuborish
     await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     await bot.send_location(ADMIN_ID, lat, lon)
     
-    await message.answer("✅ Rahmat! Buyurtmangiz qabul qilindi. Operator bog'lanadi.", reply_markup=types.ReplyKeyboardRemove())
+    # Mijozga tasdiqlash
+    await message.answer("✅ Rahmat! Buyurtmangiz qabul qilindi. Operator tez orada bog'lanadi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
 
 # --- RENDER PORT SOZLAMASI ---
