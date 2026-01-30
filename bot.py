@@ -21,6 +21,7 @@ dp = Dispatcher()
 # --- FSM (Qadamlar) ---
 class OrderSteps(StatesGroup):
     choosing_color = State()
+    waiting_for_quantity = State() # Soni uchun yangi qadam
     waiting_for_name = State()
     waiting_for_phone = State()
     waiting_for_location = State()
@@ -51,7 +52,8 @@ def location_keyboard():
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Assalomu alaykum! Rangni tanlang:",
+        "Assalomu alaykum! **PREMIUM TOWELS** botiga xush kelibsiz.\n"
+        "Iltimos, sochiq rangini tanlang:",
         reply_markup=color_keyboard()
     )
     await state.set_state(OrderSteps.choosing_color)
@@ -60,21 +62,35 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def color_chosen(callback: types.CallbackQuery, state: FSMContext):
     color = "Oq" if callback.data == "color_oq" else "Qora"
     await state.update_data(chosen_color=color)
-    
     await callback.message.delete()
-    await callback.message.answer(f"Tanlandi: {color}\n\nIltimos, ism va familiyangizni yozing:")
+    await callback.message.answer(f"Tanlandi: {color}\n\nNechta buyurtma bermoqchisiz? \n(Eng kam buyurtma: **25 ta**)", parse_mode="Markdown")
+    await state.set_state(OrderSteps.waiting_for_quantity)
+
+@dp.message(OrderSteps.waiting_for_quantity)
+async def quantity_step(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("Iltimos, faqat son kiriting (masalan: 25):")
+        return
+    
+    quantity = int(message.text)
+    if quantity < 25:
+        await message.answer("❌ Kechirasiz, eng kam buyurtma **25 ta** bo'lishi kerak. Iltimos, qaytadan kiriting:", parse_mode="Markdown")
+        return
+
+    await state.update_data(amount=quantity)
+    await message.answer(f"Rahmat! {quantity} ta buyurtma qabul qilindi.\n\nEndi ism va familiyangizni yozing:")
     await state.set_state(OrderSteps.waiting_for_name)
 
 @dp.message(OrderSteps.waiting_for_name)
 async def name_step(message: types.Message, state: FSMContext):
     await state.update_data(full_name=message.text)
-    await message.answer("Rahmat! Endi telefon raqamingizni yuboring:", reply_markup=phone_keyboard())
+    await message.answer("Telefon raqamingizni yuboring:", reply_markup=phone_keyboard())
     await state.set_state(OrderSteps.waiting_for_phone)
 
 @dp.message(OrderSteps.waiting_for_phone, F.contact)
 async def phone_step(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.contact.phone_number)
-    await message.answer("Oxirgi qadam: Lokatsiyangizni yuboring:", reply_markup=location_keyboard())
+    await message.answer("Lokatsiyangizni yuboring:", reply_markup=location_keyboard())
     await state.set_state(OrderSteps.waiting_for_location)
 
 @dp.message(OrderSteps.waiting_for_location, F.location)
@@ -83,17 +99,17 @@ async def location_step(message: types.Message, state: FSMContext):
     lat = message.location.latitude
     lon = message.location.longitude
     
-    # Adminga xabar yuborish
     admin_text = (
         f"🚀 **YANGI BUYURTMA!**\n\n"
         f"🎨 Rang: {data['chosen_color']}\n"
+        f"🔢 Soni: {data['amount']} ta\n"
         f"👤 Mijoz: {data['full_name']}\n"
         f"📞 Tel: {data['phone']}\n"
         f"🆔 ID: `{message.from_user.id}`"
     )
     
     await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    await bot.send_location(ADMIN_ID, lat, lon) # Lokatsiyani xarita bo'lib borishi
+    await bot.send_location(ADMIN_ID, lat, lon)
     
     await message.answer("✅ Rahmat! Buyurtmangiz qabul qilindi. Operator bog'lanadi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
